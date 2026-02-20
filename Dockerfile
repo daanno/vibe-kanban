@@ -9,8 +9,8 @@ RUN apt-get update && \
         build-essential \
         pkg-config \
         libssl-dev \
-        git \
-    && rm -rf /var/lib/apt/lists/*
+        git && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -28,13 +28,13 @@ COPY remote-frontend/package.json remote-frontend/package.json
 
 RUN pnpm install --frozen-lockfile
 
-# Copy rest of source
+# Copy full source
 COPY . .
 
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Build Rust binary (CORRECT BIN NAME)
+# Build correct Rust binary (remote)
 RUN cargo build --release \
     --manifest-path crates/remote/Cargo.toml \
     --bin remote
@@ -48,16 +48,16 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         wget \
-        libssl3 \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home --uid 10001 appuser
+        libssl3 && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd --system --create-home --uid 10001 appuser
 
 WORKDIR /srv
 
-# Copy compiled binary (correct name)
+# Copy correct binary
 COPY --from=builder /app/target/release/remote /usr/local/bin/remote
 
-# Copy built frontend
+# Copy frontend assets
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
