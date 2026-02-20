@@ -18,17 +18,16 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app
 
-# Install pnpm
 RUN npm install -g pnpm
 
-# Copy dependency manifests first
+# Copy manifests
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
 
 RUN pnpm install --frozen-lockfile
 
-# Copy full repo
+# Copy repo
 COPY . .
 
 # Build frontend
@@ -40,8 +39,10 @@ RUN sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml && 
     sed -i '/^vk-billing = \["dep:billing"\]/d' crates/remote/Cargo.toml && \
     rm -f crates/remote/Cargo.lock
 
-# Build Rust binary
-RUN cargo build --release --manifest-path crates/remote/Cargo.toml
+# IMPORTANT: explicitly build binary named `server`
+RUN cargo build --release \
+    --manifest-path crates/remote/Cargo.toml \
+    --bin server
 
 ############################
 # Runtime stage
@@ -58,8 +59,8 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# Correct binary name: remote
-COPY --from=builder /app/target/release/remote /usr/local/bin/remote
+# Copy correct binary
+COPY --from=builder /app/target/release/server /usr/local/bin/server
 
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
@@ -73,4 +74,4 @@ EXPOSE 8081
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --spider -q http://127.0.0.1:8081/v1/health || exit 1
 
-ENTRYPOINT ["/usr/local/bin/remote"]
+ENTRYPOINT ["/usr/local/bin/server"]
