@@ -3,14 +3,15 @@
 # -----------------------------
 FROM node:20-bookworm AS builder
 
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
         build-essential \
         pkg-config \
         libssl-dev \
-        git && \
-    rm -rf /var/lib/apt/lists/*
+        git \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -21,7 +22,7 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy dependency manifests first
+# Copy dependency manifests first (for layer caching)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
@@ -34,10 +35,11 @@ COPY . .
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Build Rust binary
+# 🔥 Build Rust backend with ALL features enabled
 RUN cargo build --release \
     --manifest-path crates/remote/Cargo.toml \
-    --bin remote
+    --bin remote \
+    --all-features
 
 # -----------------------------
 # Runtime stage
@@ -48,23 +50,22 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         wget \
-        libssl3 && \
-    rm -rf /var/lib/apt/lists/* && \
-    useradd --system --create-home --uid 10001 appuser
+        libssl3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home --uid 10001 appuser
 
 WORKDIR /srv
 
-# Copy compiled Rust binary
-COPY --from=builder /app/crates/remote/target/release/remote /usr/local/bin/remote
+# Copy compiled backend binary
+COPY --from=builder /app/target/release/remote /usr/local/bin/remote
 
 # Copy built frontend
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
 
-# 🚀 MUST match Railway networking screen
-ENV SERVER_LISTEN_ADDR=0.0.0.0:8080
-ENV RUST_LOG=info
+# Railway provides PORT automatically
+ENV HOST=0.0.0.0
 
 EXPOSE 8080
 
