@@ -316,7 +316,7 @@ impl AuthConfig {
         }
 
         let public_base_url =
-            env::var("SERVER_PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:8081".into());
+            env::var("SERVER_PUBLIC_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".into());
 
         Ok(Self {
             github,
