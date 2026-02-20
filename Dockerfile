@@ -21,7 +21,7 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy dependency manifests first (for caching)
+# Copy dependency manifests first
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
@@ -31,17 +31,10 @@ RUN pnpm install --frozen-lockfile
 # Copy full source
 COPY . .
 
-# -------------------------------------------------
-# REMOVE private billing dependency (NO SSH needed)
-# -------------------------------------------------
-RUN sed -i '/vibe-kanban-private/d' crates/remote/Cargo.toml && \
-    sed -i '/billing/d' crates/remote/Cargo.toml && \
-    rm -f crates/remote/Cargo.lock
-
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Build Rust binary (remote)
+# Build Rust binary
 RUN cargo build --release \
     --manifest-path crates/remote/Cargo.toml \
     --bin remote
@@ -61,8 +54,8 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# Copy compiled binary
-COPY --from=builder /app/target/release/remote /usr/local/bin/remote
+# ✅ CORRECT PATH
+COPY --from=builder /app/crates/remote/target/release/remote /usr/local/bin/remote
 
 # Copy built frontend
 COPY --from=builder /app/remote-frontend/dist /srv/static
@@ -73,8 +66,5 @@ ENV SERVER_LISTEN_ADDR=0.0.0.0:8081
 ENV RUST_LOG=info
 
 EXPOSE 8081
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --spider -q http://127.0.0.1:8081/v1/health || exit 1
 
 ENTRYPOINT ["/usr/local/bin/remote"]
