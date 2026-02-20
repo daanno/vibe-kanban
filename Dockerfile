@@ -1,8 +1,9 @@
-# -----------------------------
-# Build stage
-# -----------------------------
+# ---------------------------------
+# BUILD STAGE
+# ---------------------------------
 FROM node:20-alpine AS builder
 
+# Install build deps
 RUN apk add --no-cache \
     curl \
     build-base \
@@ -11,24 +12,19 @@ RUN apk add --no-cache \
     clang-dev \
     git
 
+# Allow linking libclang on musl
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ARG POSTHOG_API_KEY=""
-ARG POSTHOG_API_ENDPOINT=""
-
-ENV VITE_PUBLIC_POSTHOG_KEY=${POSTHOG_API_KEY}
-ENV VITE_PUBLIC_POSTHOG_HOST=${POSTHOG_API_ENDPOINT}
-
 WORKDIR /app
 
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy dependency manifests first (for layer caching)
+# Copy dependency manifests first (better caching)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
@@ -41,12 +37,20 @@ COPY . .
 # Build frontend
 RUN pnpm -C remote-frontend build
 
+# --------------------------------------------------
+# REMOVE PRIVATE BILLING DEPENDENCY (SELF-HOSTED)
+# --------------------------------------------------
+RUN sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml && \
+    sed -i '/^# private crate for billing/d' crates/remote/Cargo.toml && \
+    sed -i '/^vk-billing = \["dep:billing"\]/d' crates/remote/Cargo.toml && \
+    rm -f crates/remote/Cargo.lock
+
 # Build Rust binary
 RUN cargo build --release --manifest-path crates/remote/Cargo.toml
 
-# -----------------------------
-# Runtime stage
-# -----------------------------
+# ---------------------------------
+# RUNTIME STAGE
+# ---------------------------------
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
