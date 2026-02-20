@@ -37,7 +37,7 @@ ARG CACHE_BUST=1
 RUN echo "Cache bust: $CACHE_BUST"
 
 # Build frontend using vite directly with explicit root
-RUN npx --prefix /app/remote-frontend vite build --root /app/remote-frontend
+RUN cd /app/remote-frontend && node_modules/.bin/vite build
 
 # Debug: verify frontend build output
 RUN ls -la /app/remote-frontend/dist/ || echo "DIST FOLDER MISSING"
