@@ -1,3 +1,10 @@
+# Force cache bust
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
+
+# Build frontend
+RUN pnpm -C remote-frontend build
+
 # =============================
 # BUILD STAGE
 # =============================
