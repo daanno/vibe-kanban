@@ -31,10 +31,17 @@ RUN pnpm install --frozen-lockfile
 # Copy full source
 COPY . .
 
+# -------------------------------------------------
+# REMOVE private billing dependency (NO SSH needed)
+# -------------------------------------------------
+RUN sed -i '/vibe-kanban-private/d' crates/remote/Cargo.toml && \
+    sed -i '/billing/d' crates/remote/Cargo.toml && \
+    rm -f crates/remote/Cargo.lock
+
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Build correct Rust binary (remote)
+# Build Rust binary (remote)
 RUN cargo build --release \
     --manifest-path crates/remote/Cargo.toml \
     --bin remote
@@ -54,10 +61,10 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# Copy correct binary
+# Copy compiled binary
 COPY --from=builder /app/target/release/remote /usr/local/bin/remote
 
-# Copy frontend assets
+# Copy built frontend
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
