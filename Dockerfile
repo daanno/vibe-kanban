@@ -1,80 +1,75 @@
-# =============================
-# BUILD STAGE
-# =============================
-FROM node:20-bookworm AS builder
+# syntax=docker/dockerfile:1.6
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
-        pkg-config \
-        libssl-dev \
-        git \
-    && rm -rf /var/lib/apt/lists/*
+ARG APP_NAME=remote
+ARG FEATURES=""
 
-# Install Rust
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+FROM node:20-alpine AS fe-builder
+WORKDIR /repo
 
-WORKDIR /app
+RUN corepack enable
 
-# Install pnpm
-RUN npm install -g pnpm
-
-# Copy dependency manifests first (for better caching)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --filter ./remote-frontend --frozen-lockfile
 
-# Copy full source
-COPY . .
+COPY remote-frontend/ remote-frontend/
+COPY shared/ shared/
 
-# Force cache bust
-ARG CACHE_BUST=1
-RUN echo "Cache bust: $CACHE_BUST"
+RUN pnpm -C remote-frontend build
 
-# Build frontend using vite directly with explicit root
-RUN cd /app/remote-frontend && node_modules/.bin/vite build
+FROM rust:1.93-slim-bookworm AS builder
+ARG APP_NAME
+ARG FEATURES
 
-# Debug: show full vite output and dist contents
-RUN cd /app/remote-frontend && node_modules/.bin/vite build 2>&1 | head -50
-RUN find /app/remote-frontend -name "*.html" -o -name "*.js" | grep -v node_modules | head -20
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
-# Debug: verify frontend build output
-RUN ls -la /app/remote-frontend/dist/ || echo "DIST FOLDER MISSING"
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates git openssh-client \
+  && rm -rf /var/lib/apt/lists/*
 
-# Build Rust backend
-RUN cargo build --release \
-    --manifest-path crates/remote/Cargo.toml \
-    --bin remote \
-    --all-features
+WORKDIR /app
 
-# =============================
-# RUNTIME STAGE
-# =============================
+COPY rust-toolchain.toml ./
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+COPY shared shared
+COPY assets assets
+
+RUN mkdir -p /app/bin
+
+RUN if [ -z "${FEATURES}" ]; then \
+      sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml; \
+      sed -i '/^# private crate for billing/d' crates/remote/Cargo.toml; \
+      sed -i '/^vk-billing = \["dep:billing"\]/d' crates/remote/Cargo.toml; \
+      rm -f crates/remote/Cargo.lock; \
+    fi
+
+RUN cargo build --release --manifest-path crates/remote/Cargo.toml \
+ && cp crates/remote/target/release/${APP_NAME} /app/bin/${APP_NAME}
+
 FROM debian:bookworm-slim AS runtime
+ARG APP_NAME
 
-ARG CACHE_BUST=1
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        wget \
-        libssl3 \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home --uid 10001 appuser
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates libssl3 wget git \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --system --create-home --uid 10001 appuser
 
 WORKDIR /srv
 
-COPY --from=builder /app/crates/remote/target/release/remote /usr/local/bin/remote
-COPY --from=builder /app/remote-frontend/dist /srv/static
+COPY --from=builder /app/bin/${APP_NAME} /usr/local/bin/${APP_NAME}
+COPY --from=fe-builder /repo/remote-frontend/dist /srv/static
 
 USER appuser
 
-ENV HOST=0.0.0.0
-EXPOSE 8080
+ENV SERVER_LISTEN_ADDR=0.0.0.0:8081 \
+    RUST_LOG=info
+
+EXPOSE 8081
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["wget","--spider","-q","http://127.0.0.1:8081/v1/health"]
 
 ENTRYPOINT ["/usr/local/bin/remote"]
