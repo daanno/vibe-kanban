@@ -204,7 +204,7 @@ impl RemoteServerConfig {
             .map_err(|_| ConfigError::MissingVar("SERVER_DATABASE_URL"))?;
 
         let listen_addr =
-            env::var("SERVER_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:8081".to_string());
+            env::var("SERVER_LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
         let server_public_base_url = env::var("SERVER_PUBLIC_BASE_URL").ok();
 
