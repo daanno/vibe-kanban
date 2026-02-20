@@ -1,82 +1,78 @@
+# -----------------------------
 # Build stage
-FROM node:24-alpine AS builder
+# -----------------------------
+FROM node:20-alpine AS builder
 
-# Install build dependencies
 RUN apk add --no-cache \
     curl \
     build-base \
     perl \
     llvm-dev \
-    clang-dev
+    clang-dev \
+    git
 
-# Allow linking libclang on musl
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 
 # Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ARG POSTHOG_API_KEY
-ARG POSTHOG_API_ENDPOINT
+ARG POSTHOG_API_KEY=""
+ARG POSTHOG_API_ENDPOINT=""
 
-ENV VITE_PUBLIC_POSTHOG_KEY=$POSTHOG_API_KEY
-ENV VITE_PUBLIC_POSTHOG_HOST=$POSTHOG_API_ENDPOINT
+ENV VITE_PUBLIC_POSTHOG_KEY=${POSTHOG_API_KEY}
+ENV VITE_PUBLIC_POSTHOG_HOST=${POSTHOG_API_ENDPOINT}
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files for dependency caching
-COPY package*.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY frontend/package*.json ./frontend/
-COPY npx-cli/package*.json ./npx-cli/
+# Install pnpm
+RUN npm install -g pnpm
 
-# Install pnpm and dependencies
-RUN npm install -g pnpm && pnpm install
+# Copy dependency manifests first (for layer caching)
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY frontend/package.json frontend/package.json
+COPY remote-frontend/package.json remote-frontend/package.json
 
-# Copy source code
+RUN pnpm install --frozen-lockfile
+
+# Copy rest of source
 COPY . .
 
-# Build application
-RUN npm run generate-types
-RUN cd frontend && pnpm run build
-RUN cargo build --release --bin server
+# Build frontend
+RUN pnpm -C remote-frontend build
 
+# Build Rust binary
+RUN cargo build --release --manifest-path crates/remote/Cargo.toml
+
+# -----------------------------
 # Runtime stage
-FROM alpine:latest AS runtime
+# -----------------------------
+FROM debian:bookworm-slim AS runtime
 
-# Install runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates \
-    tini \
-    libgcc \
-    wget
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+     ca-certificates \
+     wget \
+     libssl3 \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --system --create-home --uid 10001 appuser
 
-# Create app user for security
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+WORKDIR /srv
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/server /usr/local/bin/server
+# Copy compiled binary
+COPY --from=builder /app/target/release/remote /usr/local/bin/remote
 
-# Create repos directory and set permissions
-RUN mkdir -p /repos && \
-    chown -R appuser:appgroup /repos
+# Copy built frontend
+COPY --from=builder /app/remote-frontend/dist /srv/static
 
-# Switch to non-root user
 USER appuser
 
-# Set runtime environment
-ENV HOST=0.0.0.0
-ENV PORT=3000
-EXPOSE 3000
+ENV SERVER_LISTEN_ADDR=0.0.0.0:8081
+ENV RUST_LOG=info
 
-# Set working directory
-WORKDIR /repos
+EXPOSE 8081
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider "http://${HOST:-localhost}:${PORT:-3000}" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --spider -q http://127.0.0.1:8081/v1/health || exit 1
 
-# Run the application
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["server"]
+ENTRYPOINT ["/usr/local/bin/remote"]
