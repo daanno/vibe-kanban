@@ -1,10 +1,3 @@
-# Force cache bust
-ARG CACHE_BUST=1
-RUN echo "Cache bust: $CACHE_BUST"
-
-# Build frontend
-RUN pnpm -C remote-frontend build
-
 # =============================
 # BUILD STAGE
 # =============================
@@ -19,8 +12,6 @@ RUN apt-get update && \
         libssl-dev \
         git \
     && rm -rf /var/lib/apt/lists/*
-
-
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -40,6 +31,10 @@ RUN pnpm install --frozen-lockfile
 
 # Copy full source
 COPY . .
+
+# Force cache bust
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
 
 # Build frontend
 RUN pnpm -C remote-frontend build
