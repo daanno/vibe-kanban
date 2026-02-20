@@ -39,6 +39,10 @@ RUN echo "Cache bust: $CACHE_BUST"
 # Build frontend using vite directly with explicit root
 RUN cd /app/remote-frontend && node_modules/.bin/vite build
 
+# Debug: show full vite output and dist contents
+RUN cd /app/remote-frontend && node_modules/.bin/vite build 2>&1 | head -50
+RUN find /app/remote-frontend -name "*.html" -o -name "*.js" | grep -v node_modules | head -20
+
 # Debug: verify frontend build output
 RUN ls -la /app/remote-frontend/dist/ || echo "DIST FOLDER MISSING"
 
