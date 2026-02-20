@@ -39,6 +39,9 @@ RUN echo "Cache bust: $CACHE_BUST"
 # Build frontend
 RUN pnpm -C remote-frontend build
 
+# Debug: verify frontend build output
+RUN ls -la /app/remote-frontend/dist/ || echo "DIST FOLDER MISSING"
+
 # 🔥 Build Rust backend with ALL features enabled
 RUN cargo build --release \
     --manifest-path crates/remote/Cargo.toml \
