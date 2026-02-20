@@ -1,6 +1,6 @@
-# -----------------------------
-# Build stage
-# -----------------------------
+# =============================
+# BUILD STAGE
+# =============================
 FROM node:20-bookworm AS builder
 
 # Install system dependencies
@@ -22,7 +22,7 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy dependency manifests first (for layer caching)
+# Copy dependency manifests first (for better caching)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
@@ -41,9 +41,9 @@ RUN cargo build --release \
     --bin remote \
     --all-features
 
-# -----------------------------
-# Runtime stage
-# -----------------------------
+# =============================
+# RUNTIME STAGE
+# =============================
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && \
@@ -56,15 +56,15 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# Copy compiled backend binary
-COPY --from=builder /app/target/release/remote /usr/local/bin/remote
+# ✅ Correct binary path
+COPY --from=builder /app/crates/remote/target/release/remote /usr/local/bin/remote
 
-# Copy built frontend
+# Copy frontend build
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
 
-# Railway provides PORT automatically
+# Railway injects PORT automatically
 ENV HOST=0.0.0.0
 
 EXPOSE 8080
