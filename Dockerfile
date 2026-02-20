@@ -1,19 +1,16 @@
 ############################
 # Builder stage
 ############################
-FROM node:20-alpine AS builder
+FROM node:20-bookworm AS builder
 
-# Install system deps (including OpenSSL for Rust)
-RUN apk add --no-cache \
-    curl \
-    build-base \
-    perl \
-    llvm-dev \
-    clang-dev \
-    git \
-    openssl-dev \
-    pkgconfig \
-    musl-dev
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        build-essential \
+        pkg-config \
+        libssl-dev \
+        git && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Rust
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -29,7 +26,6 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
 
-# Install JS deps
 RUN pnpm install --frozen-lockfile
 
 # Copy full repo
@@ -38,19 +34,19 @@ COPY . .
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Remove private billing crate references
+# Remove private billing dependency
 RUN sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml && \
     sed -i '/^# private crate for billing/d' crates/remote/Cargo.toml && \
     sed -i '/^vk-billing = \["dep:billing"\]/d' crates/remote/Cargo.toml && \
     rm -f crates/remote/Cargo.lock
 
-# Build Rust binary
+# Build Rust binary (normal GNU target, not musl)
 RUN cargo build --release --manifest-path crates/remote/Cargo.toml
 
 ############################
 # Runtime stage
 ############################
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -67,6 +63,12 @@ COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
 
-EXPOSE 8080
+ENV SERVER_LISTEN_ADDR=0.0.0.0:8081
+ENV RUST_LOG=info
 
-CMD ["remote"]
+EXPOSE 8081
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --spider -q http://127.0.0.1:8081/v1/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/remote"]
