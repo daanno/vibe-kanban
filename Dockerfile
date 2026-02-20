@@ -54,7 +54,7 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# ✅ CORRECT PATH
+# Copy compiled Rust binary
 COPY --from=builder /app/crates/remote/target/release/remote /usr/local/bin/remote
 
 # Copy built frontend
@@ -62,9 +62,10 @@ COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
 
-ENV SERVER_LISTEN_ADDR=0.0.0.0:8081
+# 🚀 MUST match Railway networking screen
+ENV SERVER_LISTEN_ADDR=0.0.0.0:8080
 ENV RUST_LOG=info
 
-EXPOSE 8081
+EXPOSE 8080
 
 ENTRYPOINT ["/usr/local/bin/remote"]
