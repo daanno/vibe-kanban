@@ -25,19 +25,17 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-ts-rs = { workspace = true }
-tower-http = { workspace = true }
-schemars = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
+tower-http = { workspace = true }
+schemars = { workspace = true }
 git2 = { workspace = true }
+ts-rs = { workspace = true }
 
-shlex = "1.3.0"
 tokio-util = { version = "0.7", features = ["io"] }
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "sqlite", "sqlite-preupdate-hook", "chrono", "uuid"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
-sentry = { version = "0.41.0", default-features = false, features = ["anyhow", "backtrace", "panic", "debug-images", "reqwest"] }
 strip-ansi-escapes = "0.2.1"
 thiserror = { workspace = true }
 os_info = "3.12.0"
@@ -50,14 +48,11 @@ rand = { version = "0.8", features = ["std"] }
 sha2 = "0.10"
 regex = "1"
 tokio-tungstenite = { version = "0.24", features = ["connect"] }
+sentry = { version = "0.41.0", default-features = false, features = ["anyhow", "backtrace", "panic", "debug-images", "reqwest"] }
 
 [build-dependencies]
 dotenv = "0.15"
 
 [features]
 default = ["qa-mode"]
-
-qa-mode = [
-    "services/qa-mode",
-    "executors/qa-mode"
-]
+qa-mode = ["services/qa-mode", "executors/qa-mode"]
