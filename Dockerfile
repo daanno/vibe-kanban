@@ -3,14 +3,6 @@
 # =============================
 FROM node:20-bookworm AS builder
 
-# Add this line near the top of the builder stage
-ARG CACHE_BUST=1
-```
-
-Then in Railway Variables add:
-```
-CACHE_BUST=2
-
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
