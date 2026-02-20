@@ -3,7 +3,6 @@
 ############################
 FROM node:20-bookworm AS builder
 
-# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -22,20 +21,20 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy dependency manifests first (for better caching)
+# Copy dependency manifests first
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
 
 RUN pnpm install --frozen-lockfile
 
-# Copy full repository
+# Copy full repo
 COPY . .
 
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Remove private billing dependency for self-hosted mode
+# Remove private billing dependency
 RUN sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml && \
     sed -i '/^# private crate for billing/d' crates/remote/Cargo.toml && \
     sed -i '/^vk-billing = \["dep:billing"\]/d' crates/remote/Cargo.toml && \
@@ -59,10 +58,9 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# IMPORTANT: binary name is `server`
-COPY --from=builder /app/target/release/server /usr/local/bin/remote
+# Correct binary name: remote
+COPY --from=builder /app/target/release/remote /usr/local/bin/remote
 
-# Copy frontend build
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
