@@ -36,13 +36,13 @@ COPY . .
 ARG CACHE_BUST=1
 RUN echo "Cache bust: $CACHE_BUST"
 
-# Build frontend (skip tsc to avoid type errors blocking build)
-RUN cd remote-frontend && npx vite build
+# Build frontend using vite directly with explicit root
+RUN npx --prefix /app/remote-frontend vite build --root /app/remote-frontend
 
 # Debug: verify frontend build output
 RUN ls -la /app/remote-frontend/dist/ || echo "DIST FOLDER MISSING"
 
-# 🔥 Build Rust backend with ALL features enabled
+# Build Rust backend
 RUN cargo build --release \
     --manifest-path crates/remote/Cargo.toml \
     --bin remote \
@@ -65,17 +65,12 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-# ✅ Correct binary path
 COPY --from=builder /app/crates/remote/target/release/remote /usr/local/bin/remote
-
-# Copy frontend build
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
 
-# Railway injects PORT automatically
 ENV HOST=0.0.0.0
-
 EXPOSE 8080
 
 ENTRYPOINT ["/usr/local/bin/remote"]
