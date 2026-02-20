@@ -3,6 +3,7 @@
 ############################
 FROM node:20-bookworm AS builder
 
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
@@ -21,26 +22,26 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy workspace files
+# Copy dependency manifests first (for better caching)
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY frontend/package.json frontend/package.json
 COPY remote-frontend/package.json remote-frontend/package.json
 
 RUN pnpm install --frozen-lockfile
 
-# Copy full repo
+# Copy full repository
 COPY . .
 
 # Build frontend
 RUN pnpm -C remote-frontend build
 
-# Remove private billing dependency
+# Remove private billing dependency for self-hosted mode
 RUN sed -i '/^billing = {.*vibe-kanban-private.*/d' crates/remote/Cargo.toml && \
     sed -i '/^# private crate for billing/d' crates/remote/Cargo.toml && \
     sed -i '/^vk-billing = \["dep:billing"\]/d' crates/remote/Cargo.toml && \
     rm -f crates/remote/Cargo.lock
 
-# Build Rust binary (normal GNU target, not musl)
+# Build Rust binary
 RUN cargo build --release --manifest-path crates/remote/Cargo.toml
 
 ############################
@@ -58,7 +59,10 @@ RUN apt-get update && \
 
 WORKDIR /srv
 
-COPY --from=builder /app/target/release/remote /usr/local/bin/remote
+# IMPORTANT: binary name is `server`
+COPY --from=builder /app/target/release/server /usr/local/bin/remote
+
+# Copy frontend build
 COPY --from=builder /app/remote-frontend/dist /srv/static
 
 USER appuser
